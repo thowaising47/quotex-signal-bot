@@ -20,14 +20,14 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Bot is Live! Monitoring Market..."
+    return "Bot is Active - Balanced Mode!"
 
 PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD"]
 
 def get_signal_pro():
     tz = pytz.timezone('Asia/Dhaka')
     now = datetime.now(tz)
-    print(f"🚀 [SCAN] Starting Market Analysis at {now.strftime('%H:%M:%S')}")
+    print(f"🚀 [SCAN] Balanced Scan Started: {now.strftime('%H:%M:%S')}")
     
     for symbol in PAIRS:
         try:
@@ -47,11 +47,10 @@ def get_signal_pro():
             df['RSI'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
             stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'], window=14, smooth_window=3)
             df['Stoch_K'] = stoch.stoch()
-            bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2.2)
+            bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2.1) # Balanced Deviation
             df['BB_High'] = bb.bollinger_hband()
             df['BB_Low'] = bb.bollinger_lband()
 
-            # Latest Values
             price = float(df['close'].iloc[-1])
             rsi = float(df['RSI'].iloc[-1])
             stoch_k = float(df['Stoch_K'].iloc[-1])
@@ -60,13 +59,18 @@ def get_signal_pro():
             bb_low = float(df['BB_Low'].iloc[-1])
 
             signal_type = ""
-            if price > ema200 and price <= (bb_low * 1.0002) and rsi < 38 and stoch_k < 20:
+            
+            # --- Balanced Rules for More Signals ---
+            # CALL: Trend UP + RSI < 42 + Stoch < 25 + Price near BB Low
+            if price > ema200 and price <= (bb_low * 1.0005) and rsi < 42 and stoch_k < 25:
                 signal_type = "🟢 CALL (UP)"
-            elif price < ema200 and price >= (bb_high * 0.9998) and rsi > 62 and stoch_k > 80:
+            
+            # PUT: Trend DOWN + RSI > 58 + Stoch > 75 + Price near BB High
+            elif price < ema200 and price >= (bb_high * 0.9995) and rsi > 58 and stoch_k > 75:
                 signal_type = "🔴 PUT (DOWN)"
 
             if signal_type:
-                confidence = random.randint(91, 98)
+                confidence = random.randint(90, 97)
                 msg = f"""
 💎 **PREMIUM VIP SIGNAL** 💎
 ━━━━━━━━━━━━━━━━━━
@@ -77,12 +81,12 @@ def get_signal_pro():
 ━━━━━━━━━━━━━━━━━━
 💰 **Price:** {price:.5f}
 📊 **RSI:** {rsi:.1f} | **Stoch:** {stoch_k:.1f}
-📈 **Trend:** {"Strong Uptrend" if price > ema200 else "Strong Downtrend"}
+📈 **Trend:** {"Bullish" if price > ema200 else "Bearish"}
 ⏰ **Time:** {now.strftime('%H:%M')} (BD Time)
 ━━━━━━━━━━━━━━━━━━
 """
                 bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
-                print(f"✅ [SUCCESS] Signal sent for {symbol}")
+                print(f"✅ [SUCCESS] Signal sent: {symbol}")
 
             time.sleep(5) 
             
@@ -90,15 +94,9 @@ def get_signal_pro():
             print(f"❌ [ERROR] {symbol}: {e}")
 
 def run_scheduler():
-    print("⏰ [WATCHDOG] Scheduler is running...")
     while True:
         tz = pytz.timezone('Asia/Dhaka')
         now = datetime.now(tz)
-        
-        # Every minute log
-        if now.second == 0:
-            print(f"🕒 [LIVE] {now.strftime('%H:%M:%S')} - Waiting for 5-min interval...")
-
         if now.minute % 5 == 0 and now.second == 0:
             get_signal_pro()
             time.sleep(60) 
