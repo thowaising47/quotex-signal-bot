@@ -21,9 +21,7 @@ app = Flask(__name__)
 def home():
     return "Bot is Running!"
 
-session = requests.Session()
-session.headers.update({'User-Agent': 'Mozilla/5.0'})
-
+# Currency Pairs
 PAIRS = {
     "EURUSD=X": "EUR/USD", "GBPUSD=X": "GBP/USD", "USDJPY=X": "USD/JPY",
     "AUDUSD=X": "AUD/USD", "USDCAD=X": "USD/CAD", "EURJPY=X": "EUR/JPY",
@@ -37,29 +35,36 @@ def get_perfect_signal():
 
     for symbol, name in items:
         try:
-            data = yf.download(symbol, period="2d", interval="5m", progress=False, session=session)
-            if len(data) < 50: continue
+            # FIX: session parameter remove kora hoyeche Yahoo API error-er jonno
+            data = yf.download(symbol, period="2d", interval="5m", progress=False)
+            
+            if len(data) < 50: 
+                print(f"Not enough data for {name}")
+                continue
 
-            # Indicators
+            # Indicators Calculation
             data['EMA200'] = ta.trend.EMAIndicator(data['Close'], window=200).ema_indicator()
             data['RSI'] = ta.momentum.RSIIndicator(data['Close'], window=14).rsi()
             bb = ta.volatility.BollingerBands(data['Close'], window=20, window_dev=2)
             data['BB_High'] = bb.bollinger_hband()
             data['BB_Low'] = bb.bollinger_lband()
 
-            price = data['Close'].iloc[-1]
-            rsi = data['RSI'].iloc[-1]
-            ema200 = data['EMA200'].iloc[-1]
-            bb_high = data['BB_High'].iloc[-1]
-            bb_low = data['BB_Low'].iloc[-1]
+            # Latest Values (using iloc[-1] for accuracy)
+            price = float(data['Close'].iloc[-1])
+            rsi = float(data['RSI'].iloc[-1])
+            ema200 = float(data['EMA200'].iloc[-1])
+            bb_high = float(data['BB_High'].iloc[-1])
+            bb_low = float(data['BB_Low'].iloc[-1])
 
             signal_type = ""
             confidence = 0
 
-            # Signal Logic
+            # 🟢 CALL Logic: Trend UP, Price touch BB Low, RSI Oversold
             if price > ema200 and price <= bb_low and rsi < 40:
                 signal_type = "🟢 CALL (UP)"
                 confidence = random.randint(88, 96)
+                
+            # 🔴 PUT Logic: Trend DOWN, Price touch BB High, RSI Overbought
             elif price < ema200 and price >= bb_high and rsi > 60:
                 signal_type = "🔴 PUT (DOWN)"
                 confidence = random.randint(88, 96)
@@ -79,11 +84,11 @@ def get_perfect_signal():
 ━━━━━━━━━━━━━━━━━━
 """
                 bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
-                print(f"Signal sent for {name}")
+                print(f"✅ Signal sent for {name}")
             
-            time.sleep(2)
+            time.sleep(1) # Gap to avoid rate limits
         except Exception as e:
-            print(f"Error scanning {name}: {e}")
+            print(f"❌ Error scanning {name}: {e}")
 
 def run_scheduler():
     schedule.every(5).minutes.do(get_perfect_signal)
@@ -92,13 +97,16 @@ def run_scheduler():
         time.sleep(1)
 
 if __name__ == "__main__":
+    # Force Start Test Message
     try:
-        bot.send_message(CHAT_ID, "🚀 **Bot Successfully Started!**\nSearching for perfect signals...")
+        bot.send_message(CHAT_ID, "🚀 **Bot Successfully Started!**\nScanning Market for Perfect Signals...")
     except Exception as e:
-        print(f"Telegram Error: {e}")
+        print(f"Telegram Config Error: {e}")
 
+    # Start Threads
     threading.Thread(target=get_perfect_signal).start()
     threading.Thread(target=run_scheduler, daemon=True).start()
     
+    # Render Port Binding
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
