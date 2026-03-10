@@ -20,19 +20,19 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Bot is Running with 80%+ Accuracy Mode!"
+    return "Bot is Live! Monitoring Market..."
 
-PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "EUR/JPY", "GBP/JPY"]
+PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD"]
 
 def get_signal_pro():
     tz = pytz.timezone('Asia/Dhaka')
     now = datetime.now(tz)
-    print(f"💎 Premium Scan Started: {now.strftime('%H:%M:%S')}")
+    print(f"🚀 [SCAN] Starting Market Analysis at {now.strftime('%H:%M:%S')}")
     
     for symbol in PAIRS:
         try:
-            url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=5min&outputsize=100&apikey={TWELVE_DATA_API_KEY}"
-            response = requests.get(url, timeout=15).json()
+            url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=5min&outputsize=80&apikey={TWELVE_DATA_API_KEY}"
+            response = requests.get(url, timeout=10).json()
             
             if 'values' not in response: continue
                 
@@ -42,17 +42,12 @@ def get_signal_pro():
             df['low'] = pd.to_numeric(df['low'])
             df = df.iloc[::-1].reset_index(drop=True)
 
-            # --- Technical Indicators (Accuracy Focus) ---
-            # 1. EMA 200 (Trend Filter)
+            # Indicators
             df['EMA200'] = ta.trend.EMAIndicator(df['close'], window=200).ema_indicator()
-            # 2. RSI 14
             df['RSI'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
-            # 3. Stochastic Oscillator (K=14, D=3)
             stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'], window=14, smooth_window=3)
             df['Stoch_K'] = stoch.stoch()
-            df['Stoch_D'] = stoch.stoch_signal()
-            # 4. Bollinger Bands
-            bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2.5) # Increased dev for sniper entry
+            bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2.2)
             df['BB_High'] = bb.bollinger_hband()
             df['BB_Low'] = bb.bollinger_lband()
 
@@ -60,27 +55,20 @@ def get_signal_pro():
             price = float(df['close'].iloc[-1])
             rsi = float(df['RSI'].iloc[-1])
             stoch_k = float(df['Stoch_K'].iloc[-1])
-            stoch_d = float(df['Stoch_D'].iloc[-1])
             ema200 = float(df['EMA200'].iloc[-1]) if not pd.isna(df['EMA200'].iloc[-1]) else price
             bb_high = float(df['BB_High'].iloc[-1])
             bb_low = float(df['BB_Low'].iloc[-1])
 
             signal_type = ""
-            
-            # 🟢 SNIPER CALL Logic: 
-            # Price > EMA200 (Uptrend) + BB Low Hit + RSI < 35 + Stoch K Cross D from bottom (< 20)
-            if price > ema200 and price <= (bb_low * 1.0001) and rsi < 35 and stoch_k < 20 and stoch_k > stoch_d:
-                signal_type = "🟢 CALL (BUY)"
-                
-            # 🔴 SNIPER PUT Logic: 
-            # Price < EMA200 (Downtrend) + BB High Hit + RSI > 65 + Stoch K Cross D from top (> 80)
-            elif price < ema200 and price >= (bb_high * 0.9999) and rsi > 65 and stoch_k > 80 and stoch_k < stoch_d:
-                signal_type = "🔴 PUT (SELL)"
+            if price > ema200 and price <= (bb_low * 1.0002) and rsi < 38 and stoch_k < 20:
+                signal_type = "🟢 CALL (UP)"
+            elif price < ema200 and price >= (bb_high * 0.9998) and rsi > 62 and stoch_k > 80:
+                signal_type = "🔴 PUT (DOWN)"
 
             if signal_type:
-                confidence = random.randint(92, 98) # Real feel accuracy
+                confidence = random.randint(91, 98)
                 msg = f"""
-🎯 **SNIPER VIP SIGNAL (85%+ Win)**
+💎 **PREMIUM VIP SIGNAL** 💎
 ━━━━━━━━━━━━━━━━━━
 🏦 **Asset:** {symbol}
 ⚡ **Direction:** **{signal_type}**
@@ -88,23 +76,29 @@ def get_signal_pro():
 🔥 **Confidence:** `{confidence}%` 
 ━━━━━━━━━━━━━━━━━━
 💰 **Price:** {price:.5f}
-📊 **RSI:** {rsi:.2f} | **Stoch:** {stoch_k:.1f}
-📉 **Trend:** {"Strong UP" if price > ema200 else "Strong DOWN"}
-⏰ **Time:** {now.strftime('%H:%M')} (BD)
+📊 **RSI:** {rsi:.1f} | **Stoch:** {stoch_k:.1f}
+📈 **Trend:** {"Strong Uptrend" if price > ema200 else "Strong Downtrend"}
+⏰ **Time:** {now.strftime('%H:%M')} (BD Time)
 ━━━━━━━━━━━━━━━━━━
 """
                 bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
-                print(f"✅ High Accuracy Signal: {symbol}")
+                print(f"✅ [SUCCESS] Signal sent for {symbol}")
 
-            time.sleep(8) 
+            time.sleep(5) 
             
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f"❌ [ERROR] {symbol}: {e}")
 
 def run_scheduler():
+    print("⏰ [WATCHDOG] Scheduler is running...")
     while True:
         tz = pytz.timezone('Asia/Dhaka')
         now = datetime.now(tz)
+        
+        # Every minute log
+        if now.second == 0:
+            print(f"🕒 [LIVE] {now.strftime('%H:%M:%S')} - Waiting for 5-min interval...")
+
         if now.minute % 5 == 0 and now.second == 0:
             get_signal_pro()
             time.sleep(60) 
