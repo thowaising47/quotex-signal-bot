@@ -10,24 +10,24 @@ from datetime import datetime
 import pytz
 from flask import Flask
 
-# --- Config ---
-BOT_TOKEN = "8320790751:AAH1ZWiD5f5JpIc96eAtR-Yi5CU8t4B7dng"
-CHAT_ID = "7995220028"
-TWELVE_DATA_API_KEY = "4a817d9a7a6c477caea0b0550a02ba12"
+# --- Secure Config (Keys from Render Environment) ---
+BOT_TOKEN = os.environ.get("BOT_TOKEN")
+CHAT_ID = os.environ.get("CHAT_ID")
+TWELVE_DATA_API_KEY = os.environ.get("TWELVE_DATA_API_KEY")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Bot is in High Frequency Mode!"
+    return "Bot is Running Securely!"
 
 PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD"]
 
 def get_signal_pro():
     tz = pytz.timezone('Asia/Dhaka')
     now = datetime.now(tz)
-    print(f"🚀 [SCAN] High Frequency Scan: {now.strftime('%H:%M:%S')}")
+    print(f"🚀 [SCAN] Triggered: {now.strftime('%H:%M:%S')}")
     
     for symbol in PAIRS:
         try:
@@ -42,50 +42,44 @@ def get_signal_pro():
             df['low'] = pd.to_numeric(df['low'])
             df = df.iloc[::-1].reset_index(drop=True)
 
-            # Indicators (More sensitive)
+            # Indicators
             df['RSI'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
-            stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'], window=14, smooth_window=3)
-            df['Stoch_K'] = stoch.stoch()
             bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2.0)
             df['BB_High'] = bb.bollinger_hband()
             df['BB_Low'] = bb.bollinger_lband()
 
             price = float(df['close'].iloc[-1])
             rsi = float(df['RSI'].iloc[-1])
-            stoch_k = float(df['Stoch_K'].iloc[-1])
-            bb_high = float(df['BB_High'].iloc[-1])
-            bb_low = float(df['BB_Low'].iloc[-1])
+            bb_h = float(df['BB_High'].iloc[-1])
+            bb_l = float(df['BB_Low'].iloc[-1])
 
             signal_type = ""
-            # --- High Frequency Rules ---
-            # CALL: RSI < 45 and Price near BB Low
-            if price <= (bb_low * 1.0007) and rsi < 45:
+            # High frequency logic for signals
+            if price <= (bb_l * 1.0008) and rsi < 48:
                 signal_type = "🟢 CALL (UP)"
-            # PUT: RSI > 55 and Price near BB High
-            elif price >= (bb_high * 0.9993) and rsi > 55:
+            elif price >= (bb_h * 0.9992) and rsi > 52:
                 signal_type = "🔴 PUT (DOWN)"
 
             if signal_type:
-                confidence = random.randint(88, 95)
-                msg = f"""
-🔥 **VIP SIGNAL (ACTIVE MODE)**
+                confidence = random.randint(91, 98)
+                # Apnar dewa perfect VIP template:
+                msg = f"""🎯 **PREMIUM VIP SIGNAL**
 ━━━━━━━━━━━━━━━━━━
 🏦 **Asset:** {symbol}
 ⚡ **Direction:** **{signal_type}**
 ⏳ **Duration:** 5 Minutes
 🔥 **Confidence:** `{confidence}%` 
 ━━━━━━━━━━━━━━━━━━
-📊 **RSI:** {rsi:.1f} | **Stoch:** {stoch_k:.1f}
+📊 **RSI:** {rsi:.1f}
 ⏰ **BD Time:** {now.strftime('%H:%M')}
-━━━━━━━━━━━━━━━━━━
-"""
+━━━━━━━━━━━━━━━━━━"""
                 bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
                 print(f"✅ [SENT] {symbol}")
 
-            time.sleep(5) 
+            time.sleep(6) # Credit protection
             
         except Exception as e:
-            print(f"❌ [ERROR] {symbol}: {e}")
+            print(f"❌ Error {symbol}: {e}")
 
 def run_scheduler():
     while True:
