@@ -11,8 +11,8 @@ from flask import Flask
 import os
 
 # --- Config ---
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
-CHAT_ID = "YOUR_CHAT_ID_HERE"
+BOT_TOKEN = "8320790751:AAH1ZWiD5f5JpIc96eAtR-Yi5CU8t4B7dng"
+CHAT_ID = "7995220028"
 bot = telebot.TeleBot(BOT_TOKEN)
 
 app = Flask(__name__)
@@ -56,7 +56,7 @@ def get_perfect_signal():
             signal_type = ""
             confidence = 0
 
-            # Logic (Thik kora hoyeche jate signal ashe)
+            # Signal Logic
             if price > ema200 and price <= bb_low and rsi < 40:
                 signal_type = "🟢 CALL (UP)"
                 confidence = random.randint(88, 96)
@@ -86,25 +86,19 @@ def get_perfect_signal():
             print(f"Error scanning {name}: {e}")
 
 def run_scheduler():
-    # Proti 5 minute por por scan korbe
     schedule.every(5).minutes.do(get_perfect_signal)
     while True:
         schedule.run_pending()
         time.sleep(1)
 
 if __name__ == "__main__":
-    # Bot start hoyar shathey shathey ekta Test Message dibe
     try:
         bot.send_message(CHAT_ID, "🚀 **Bot Successfully Started!**\nSearching for perfect signals...")
-    except:
-        print("Telegram Chat ID or Token is wrong!")
+    except Exception as e:
+        print(f"Telegram Error: {e}")
 
-    # Prothom bar manually scan shuru kora
     threading.Thread(target=get_perfect_signal).start()
-    
-    # Background scheduler start kora
     threading.Thread(target=run_scheduler, daemon=True).start()
     
-    # Render port binding
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
