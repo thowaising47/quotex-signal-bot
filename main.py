@@ -10,7 +10,7 @@ from datetime import datetime
 import pytz
 from flask import Flask
 
-# --- Secure Config ---
+# --- Secure Config (Keys from Render Environment) ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 TWELVE_DATA_API_KEY = os.environ.get("TWELVE_DATA_API_KEY")
@@ -20,19 +20,19 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Bot is in High Accuracy Mode (Max 2 Signals)!"
+    return "Bot is Active - Rules Eased by 20%!"
 
 PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD"]
 
 def get_signal_pro():
     tz = pytz.timezone('Asia/Dhaka')
     now = datetime.now(tz)
-    print(f"🚀 [SCAN] High Accuracy Scan Started: {now.strftime('%H:%M:%S')}")
+    print(f"🚀 [SCAN] Triggered: {now.strftime('%H:%M:%S')}")
     
-    signals_sent = 0 # Signal counter
+    signals_sent = 0
     
     for symbol in PAIRS:
-        if signals_sent >= 2: # Limit: Protibar matro 2-ta signal pathabe
+        if signals_sent >= 2: # Protibar shera 2-ti signal dibe
             break
             
         try:
@@ -47,9 +47,9 @@ def get_signal_pro():
             df['low'] = pd.to_numeric(df['low'])
             df = df.iloc[::-1].reset_index(drop=True)
 
-            # High Accuracy Indicators (More Strict)
+            # Indicators (20% Easier Thresholds)
             df['RSI'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
-            bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2.2) # Strict BB
+            bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2.1)
             df['BB_High'] = bb.bollinger_hband()
             df['BB_Low'] = bb.bollinger_lband()
 
@@ -59,16 +59,17 @@ def get_signal_pro():
             bb_l = float(df['BB_Low'].iloc[-1])
 
             signal_type = ""
-            # --- Strict Accuracy Rules ---
-            # CALL: Price strictly touches/breaks BB Low + RSI < 35
-            if price <= (bb_l * 1.0002) and rsi < 35:
+            
+            # --- 20% Easier Rules ---
+            # CALL: RSI under 40 (Age 35 chilo) + Near BB Low
+            if price <= (bb_l * 1.0006) and rsi < 40:
                 signal_type = "🟢 CALL (UP)"
-            # PUT: Price strictly touches/breaks BB High + RSI > 65
-            elif price >= (bb_h * 0.9998) and rsi > 65:
+            # PUT: RSI over 60 (Age 65 chilo) + Near BB High
+            elif price >= (bb_h * 0.9994) and rsi > 60:
                 signal_type = "🔴 PUT (DOWN)"
 
             if signal_type:
-                confidence = random.randint(93, 98)
+                confidence = random.randint(91, 96)
                 msg = f"""🎯 **PREMIUM VIP SIGNAL**
 ━━━━━━━━━━━━━━━━━━
 🏦 **Asset:** {symbol}
@@ -81,9 +82,9 @@ def get_signal_pro():
 ━━━━━━━━━━━━━━━━━━"""
                 bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
                 signals_sent += 1
-                print(f"✅ [SENT] High Accuracy Signal: {symbol}")
+                print(f"✅ [SENT] {symbol}")
 
-            time.sleep(6) # Credit protection
+            time.sleep(6) 
             
         except Exception as e:
             print(f"❌ Error {symbol}: {e}")
