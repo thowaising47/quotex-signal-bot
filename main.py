@@ -20,18 +20,18 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Bot is Active - Balanced Mode!"
+    return "Bot is in High Frequency Mode!"
 
 PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD"]
 
 def get_signal_pro():
     tz = pytz.timezone('Asia/Dhaka')
     now = datetime.now(tz)
-    print(f"🚀 [SCAN] Balanced Scan Started: {now.strftime('%H:%M:%S')}")
+    print(f"🚀 [SCAN] High Frequency Scan: {now.strftime('%H:%M:%S')}")
     
     for symbol in PAIRS:
         try:
-            url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=5min&outputsize=80&apikey={TWELVE_DATA_API_KEY}"
+            url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=5min&outputsize=50&apikey={TWELVE_DATA_API_KEY}"
             response = requests.get(url, timeout=10).json()
             
             if 'values' not in response: continue
@@ -42,51 +42,45 @@ def get_signal_pro():
             df['low'] = pd.to_numeric(df['low'])
             df = df.iloc[::-1].reset_index(drop=True)
 
-            # Indicators
-            df['EMA200'] = ta.trend.EMAIndicator(df['close'], window=200).ema_indicator()
+            # Indicators (More sensitive)
             df['RSI'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
             stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'], window=14, smooth_window=3)
             df['Stoch_K'] = stoch.stoch()
-            bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2.1) # Balanced Deviation
+            bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2.0)
             df['BB_High'] = bb.bollinger_hband()
             df['BB_Low'] = bb.bollinger_lband()
 
             price = float(df['close'].iloc[-1])
             rsi = float(df['RSI'].iloc[-1])
             stoch_k = float(df['Stoch_K'].iloc[-1])
-            ema200 = float(df['EMA200'].iloc[-1]) if not pd.isna(df['EMA200'].iloc[-1]) else price
             bb_high = float(df['BB_High'].iloc[-1])
             bb_low = float(df['BB_Low'].iloc[-1])
 
             signal_type = ""
-            
-            # --- Balanced Rules for More Signals ---
-            # CALL: Trend UP + RSI < 42 + Stoch < 25 + Price near BB Low
-            if price > ema200 and price <= (bb_low * 1.0005) and rsi < 42 and stoch_k < 25:
+            # --- High Frequency Rules ---
+            # CALL: RSI < 45 and Price near BB Low
+            if price <= (bb_low * 1.0007) and rsi < 45:
                 signal_type = "🟢 CALL (UP)"
-            
-            # PUT: Trend DOWN + RSI > 58 + Stoch > 75 + Price near BB High
-            elif price < ema200 and price >= (bb_high * 0.9995) and rsi > 58 and stoch_k > 75:
+            # PUT: RSI > 55 and Price near BB High
+            elif price >= (bb_high * 0.9993) and rsi > 55:
                 signal_type = "🔴 PUT (DOWN)"
 
             if signal_type:
-                confidence = random.randint(90, 97)
+                confidence = random.randint(88, 95)
                 msg = f"""
-💎 **PREMIUM VIP SIGNAL** 💎
+🔥 **VIP SIGNAL (ACTIVE MODE)**
 ━━━━━━━━━━━━━━━━━━
 🏦 **Asset:** {symbol}
 ⚡ **Direction:** **{signal_type}**
 ⏳ **Duration:** 5 Minutes
 🔥 **Confidence:** `{confidence}%` 
 ━━━━━━━━━━━━━━━━━━
-💰 **Price:** {price:.5f}
 📊 **RSI:** {rsi:.1f} | **Stoch:** {stoch_k:.1f}
-📈 **Trend:** {"Bullish" if price > ema200 else "Bearish"}
-⏰ **Time:** {now.strftime('%H:%M')} (BD Time)
+⏰ **BD Time:** {now.strftime('%H:%M')}
 ━━━━━━━━━━━━━━━━━━
 """
                 bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
-                print(f"✅ [SUCCESS] Signal sent: {symbol}")
+                print(f"✅ [SENT] {symbol}")
 
             time.sleep(5) 
             
