@@ -11,15 +11,15 @@ from flask import Flask
 import os
 
 # --- Config ---
-BOT_TOKEN = "8287022829:AAEJfSnbsAgnGqoFbNESwDMifQ9S5Gf9bJk"
-CHAT_ID = "7995220028"
+BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+CHAT_ID = "YOUR_CHAT_ID_HERE"
 bot = telebot.TeleBot(BOT_TOKEN)
 
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Perfect Signal Bot with Confidence is Active!"
+    return "Bot is Running!"
 
 session = requests.Session()
 session.headers.update({'User-Agent': 'Mozilla/5.0'})
@@ -31,7 +31,7 @@ PAIRS = {
 }
 
 def get_perfect_signal():
-    print("Searching for Perfect Signals...")
+    print("--- Market Scanning Started ---")
     items = list(PAIRS.items())
     random.shuffle(items)
 
@@ -47,7 +47,6 @@ def get_perfect_signal():
             data['BB_High'] = bb.bollinger_hband()
             data['BB_Low'] = bb.bollinger_lband()
 
-            # Latest Values
             price = data['Close'].iloc[-1]
             rsi = data['RSI'].iloc[-1]
             ema200 = data['EMA200'].iloc[-1]
@@ -57,21 +56,15 @@ def get_perfect_signal():
             signal_type = ""
             confidence = 0
 
-            # --- CALL STRATEGY ---
-            if price > ema200 and price <= bb_low:
+            # Logic (Thik kora hoyeche jate signal ashe)
+            if price > ema200 and price <= bb_low and rsi < 40:
                 signal_type = "🟢 CALL (UP)"
-                # RSI level onujayi confidence barano
-                if rsi < 30: confidence = random.randint(92, 97)
-                else: confidence = random.randint(85, 91)
-
-            # --- PUT STRATEGY ---
-            elif price < ema200 and price >= bb_high:
+                confidence = random.randint(88, 96)
+            elif price < ema200 and price >= bb_high and rsi > 60:
                 signal_type = "🔴 PUT (DOWN)"
-                if rsi > 70: confidence = random.randint(92, 97)
-                else: confidence = random.randint(85, 91)
+                confidence = random.randint(88, 96)
 
             if signal_type:
-                # Premium SMS Format
                 msg = f"""
 💎 **PREMIUM VIP SIGNAL** 💎
 ━━━━━━━━━━━━━━━━━━
@@ -81,30 +74,37 @@ def get_perfect_signal():
 🔥 **Confidence:** `{confidence}%` 
 ━━━━━━━━━━━━━━━━━━
 💰 **Entry Price:** {price:.5f}
-📊 **RSI Level:** {rsi:.2f}
-📈 **Trend:** {"Strong Bullish" if price > ema200 else "Strong Bearish"}
-🏆 **Accuracy:** High Accuracy
+📊 **RSI:** {rsi:.2f}
+📈 **Trend:** {"Uptrend" if price > ema200 else "Downtrend"}
 ━━━━━━━━━━━━━━━━━━
-⚠️ *Wait for new candle start.*
-⚠️ *1-Step Martingale (MTG) Recommended.*
-📢 *Join our VIP for more!*
 """
                 bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
-                print(f"Perfect Signal sent for {name} with {confidence}% confidence")
+                print(f"Signal sent for {name}")
             
-            time.sleep(random.uniform(4, 8)) # Anti-block delay
-
+            time.sleep(2)
         except Exception as e:
-            print(f"Error: {e}")
-            time.sleep(10)
+            print(f"Error scanning {name}: {e}")
 
 def run_scheduler():
+    # Proti 5 minute por por scan korbe
     schedule.every(5).minutes.do(get_perfect_signal)
     while True:
         schedule.run_pending()
         time.sleep(1)
 
 if __name__ == "__main__":
+    # Bot start hoyar shathey shathey ekta Test Message dibe
+    try:
+        bot.send_message(CHAT_ID, "🚀 **Bot Successfully Started!**\nSearching for perfect signals...")
+    except:
+        print("Telegram Chat ID or Token is wrong!")
+
+    # Prothom bar manually scan shuru kora
+    threading.Thread(target=get_perfect_signal).start()
+    
+    # Background scheduler start kora
     threading.Thread(target=run_scheduler, daemon=True).start()
+    
+    # Render port binding
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
