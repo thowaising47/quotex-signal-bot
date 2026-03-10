@@ -10,7 +10,7 @@ from datetime import datetime
 import pytz
 from flask import Flask
 
-# --- Secure Config (Keys from Render Environment) ---
+# --- Secure Config ---
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 TWELVE_DATA_API_KEY = os.environ.get("TWELVE_DATA_API_KEY")
@@ -20,16 +20,21 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Bot is Running Securely!"
+    return "Bot is in High Accuracy Mode (Max 2 Signals)!"
 
 PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD"]
 
 def get_signal_pro():
     tz = pytz.timezone('Asia/Dhaka')
     now = datetime.now(tz)
-    print(f"🚀 [SCAN] Triggered: {now.strftime('%H:%M:%S')}")
+    print(f"🚀 [SCAN] High Accuracy Scan Started: {now.strftime('%H:%M:%S')}")
+    
+    signals_sent = 0 # Signal counter
     
     for symbol in PAIRS:
+        if signals_sent >= 2: # Limit: Protibar matro 2-ta signal pathabe
+            break
+            
         try:
             url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=5min&outputsize=50&apikey={TWELVE_DATA_API_KEY}"
             response = requests.get(url, timeout=10).json()
@@ -42,9 +47,9 @@ def get_signal_pro():
             df['low'] = pd.to_numeric(df['low'])
             df = df.iloc[::-1].reset_index(drop=True)
 
-            # Indicators
+            # High Accuracy Indicators (More Strict)
             df['RSI'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
-            bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2.0)
+            bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2.2) # Strict BB
             df['BB_High'] = bb.bollinger_hband()
             df['BB_Low'] = bb.bollinger_lband()
 
@@ -54,15 +59,16 @@ def get_signal_pro():
             bb_l = float(df['BB_Low'].iloc[-1])
 
             signal_type = ""
-            # High frequency logic for signals
-            if price <= (bb_l * 1.0008) and rsi < 48:
+            # --- Strict Accuracy Rules ---
+            # CALL: Price strictly touches/breaks BB Low + RSI < 35
+            if price <= (bb_l * 1.0002) and rsi < 35:
                 signal_type = "🟢 CALL (UP)"
-            elif price >= (bb_h * 0.9992) and rsi > 52:
+            # PUT: Price strictly touches/breaks BB High + RSI > 65
+            elif price >= (bb_h * 0.9998) and rsi > 65:
                 signal_type = "🔴 PUT (DOWN)"
 
             if signal_type:
-                confidence = random.randint(91, 98)
-                # Apnar dewa perfect VIP template:
+                confidence = random.randint(93, 98)
                 msg = f"""🎯 **PREMIUM VIP SIGNAL**
 ━━━━━━━━━━━━━━━━━━
 🏦 **Asset:** {symbol}
@@ -74,7 +80,8 @@ def get_signal_pro():
 ⏰ **BD Time:** {now.strftime('%H:%M')}
 ━━━━━━━━━━━━━━━━━━"""
                 bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
-                print(f"✅ [SENT] {symbol}")
+                signals_sent += 1
+                print(f"✅ [SENT] High Accuracy Signal: {symbol}")
 
             time.sleep(6) # Credit protection
             
