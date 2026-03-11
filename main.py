@@ -3,7 +3,6 @@ import time
 import pandas as pd
 import ta
 import threading
-import random
 import os
 import requests
 from datetime import datetime
@@ -20,82 +19,68 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Hybrid Mode Active - Searching for Best Entry!"
+    return "Bot is in Trend-Follower Mode!"
 
 PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD"]
 
 def get_signal_pro():
     tz = pytz.timezone('Asia/Dhaka')
     now = datetime.now(tz)
-    print(f"🚀 [SCAN] Hybrid Scan Started: {now.strftime('%H:%M:%S')}")
+    print(f"🚀 [SCAN] Trend Scan: {now.strftime('%H:%M:%S')}")
     
-    potential_signals = []
+    signals = []
 
     for symbol in PAIRS:
         try:
-            url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=5min&outputsize=50&apikey={TWELVE_DATA_API_KEY}"
+            url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=5min&outputsize=30&apikey={TWELVE_DATA_API_KEY}"
             response = requests.get(url, timeout=10).json()
             
             if 'values' not in response: continue
                 
             df = pd.DataFrame(response['values'])
             df['close'] = pd.to_numeric(df['close'])
-            df['high'] = pd.to_numeric(df['high'])
-            df['low'] = pd.to_numeric(df['low'])
+            df['open'] = pd.to_numeric(df['open'])
             df = df.iloc[::-1].reset_index(drop=True)
 
-            # --- Hybrid Indicators (Better for 5min Delay) ---
-            df['EMA20'] = ta.trend.EMAIndicator(df['close'], window=20).ema_indicator()
-            df['RSI'] = ta.momentum.RSIIndicator(df['close'], window=14).rsi()
-            stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'], window=14, smooth_window=3)
-            df['Stoch_K'] = stoch.stoch()
-            
+            # EMA for Trend direction
+            df['EMA_Fast'] = ta.trend.EMAIndicator(df['close'], window=9).ema_indicator()
+            df['EMA_Slow'] = ta.trend.EMAIndicator(df['close'], window=21).ema_indicator()
+
             price = float(df['close'].iloc[-1])
-            rsi = float(df['RSI'].iloc[-1])
-            stoch_k = float(df['Stoch_K'].iloc[-1])
-            ema20 = float(df['EMA20'].iloc[-1])
+            open_p = float(df['open'].iloc[-1])
+            ema_f = float(df['EMA_Fast'].iloc[-1])
+            ema_s = float(df['EMA_Slow'].iloc[-1])
 
-            score = 0
             signal_type = ""
-
-            # Rules shifted to catch the delay
-            # CALL: Price pulling back to EMA20 + Stoch/RSI Oversold
-            if price > ema20 and stoch_k < 25 and rsi < 45:
+            # CALL: Trend is UP (EMA Fast > Slow) + Candle is Green
+            if ema_f > ema_s and price > open_p:
                 signal_type = "🟢 CALL (UP)"
-                score = (25 - stoch_k) + (45 - rsi)
-
-            # PUT: Price pulling back to EMA20 + Stoch/RSI Overbought
-            elif price < ema20 and stoch_k > 75 and rsi > 55:
+            # PUT: Trend is DOWN (EMA Fast < Slow) + Candle is Red
+            elif ema_f < ema_s and price < open_p:
                 signal_type = "🔴 PUT (DOWN)"
-                score = (stoch_k - 75) + (rsi - 55)
 
             if signal_type:
-                potential_signals.append({
-                    'symbol': symbol, 'type': signal_type, 'score': score, 
-                    'rsi': rsi, 'stoch': stoch_k
-                })
-
-            time.sleep(6) 
+                signals.append({'symbol': symbol, 'type': signal_type, 'price': price})
             
+            time.sleep(5) 
         except Exception as e:
             print(f"❌ Error {symbol}: {e}")
 
-    # Pick only the TOP 1 with highest momentum score
-    if potential_signals:
-        top = sorted(potential_signals, key=lambda x: x['score'], reverse=True)[0]
-        confidence = random.randint(92, 97)
-        msg = f"""🎯 **HYBRID SURESHOT SIGNAL**
+    # Top 1 Signal with logic
+    if signals:
+        top = signals[0] 
+        msg = f"""🎯 **SURESHOT TREND SIGNAL**
 ━━━━━━━━━━━━━━━━━━
 🏦 **Asset:** {top['symbol']}
 ⚡ **Direction:** **{top['type']}**
 ⏳ **Duration:** 5 Minutes
-🔥 **Confidence:** `{confidence}%` 
 ━━━━━━━━━━━━━━━━━━
-📊 **RSI:** {top['rsi']:.1f} | **Stoch:** {top['stoch']:.1f}
-📉 **Logic:** Trend-Pullback Confirmation
+📈 **Strategy:** EMA Cross + Momentum
 ⏰ **BD Time:** {now.strftime('%H:%M')}
-━━━━━━━━━━━━━━━━━━"""
+━━━━━━━━━━━━━━━━━━
+⚠️ *Follow the current candle trend!*"""
         bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
+        print(f"✅ Signal Sent: {top['symbol']}")
 
 def run_scheduler():
     while True:
