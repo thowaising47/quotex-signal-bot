@@ -19,66 +19,76 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "10-Min Fast Signal Bot is Active!"
+    return "Psychology-Based Bot is Active!"
 
 PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD"]
 
-# --- Instant Result Check (After 10 Mins) ---
 def check_final_result(symbol, signal_type, entry_price):
-    # 10 minute duration + 5 second buffer for API sync
-    time.sleep(605) 
+    time.sleep(605) # 10 min + buffer
     try:
         url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=1min&outputsize=1&apikey={TWELVE_DATA_API_KEY}"
         data = requests.get(url).json()
         exit_price = float(data['values'][0]['close'])
-        
         win = (exit_price > entry_price) if "CALL" in signal_type else (exit_price < entry_price)
-        result_icon = "✅ WIN" if win else "❌ LOSS"
-        
-        final_text = f"📊 **RESULT: {symbol}**\n━━━━━━━━━━━━━━\nTrade Type: 10 MIN\nEntry: `{entry_price:.5f}`\nExit: `{exit_price:.5f}`\nResult: **{result_icon}**\n━━━━━━━━━━━━━━"
-        bot.send_message(CHAT_ID, final_text)
-    except Exception as e:
-        print(f"Result Error: {e}")
+        bot.send_message(CHAT_ID, f"📊 **PSYCHOLOGY RESULT: {symbol}**\nResult: {'✅ WIN' if win else '❌ LOSS'}\nEntry: `{entry_price:.5f}` | Exit: `{exit_price:.5f}`")
+    except: pass
 
-def get_signal_fast():
+def get_psychology_signal():
     tz = pytz.timezone('Asia/Dhaka')
     now = datetime.now(tz)
-    print(f"🚀 [SCANNING] Fast 10-Min Mode: {now.strftime('%H:%M:%S')}")
+    print(f"🧠 [PSYCHOLOGY SCAN] {now.strftime('%H:%M:%S')}")
     
     for symbol in PAIRS:
         try:
-            url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=5min&outputsize=30&apikey={TWELVE_DATA_API_KEY}"
+            url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=5min&outputsize=50&apikey={TWELVE_DATA_API_KEY}"
             res = requests.get(url, timeout=10).json()
             if 'values' not in res: continue
             
             df = pd.DataFrame(res['values'])
             df['close'] = pd.to_numeric(df['close'])
+            df['high'] = pd.to_numeric(df['high'])
+            df['low'] = pd.to_numeric(df['low'])
+            df['open'] = pd.to_numeric(df['open'])
             df = df.iloc[::-1].reset_index(drop=True)
 
-            # Strategy: Balanced RSI (40/60) for faster signals
-            rsi = ta.momentum.RSIIndicator(df['close'], window=14).rsi().iloc[-1]
             price = df['close'].iloc[-1]
+            high = df['high'].iloc[-1]
+            low = df['low'].iloc[-1]
+            open_p = df['open'].iloc[-1]
+            
+            # 1. Exhaustion Logic: Porpor 3-4 ta green/red candle
+            last_3_candles = df.iloc[-3:]
+            is_exhausted_up = all(last_3_candles['close'] > last_3_candles['open'])
+            is_exhausted_down = all(last_3_candles['close'] < last_3_candles['open'])
 
+            # 2. Rejection Logic: 40% wick rejection
+            upper_wick = (high - max(open_p, price))
+            lower_wick = (min(open_p, price) - low)
+            body_size = abs(price - open_p) + 0.000001
+            
             signal_type = ""
-            # Relaxed Rules for more frequency
-            if rsi < 40: 
-                signal_type = "🟢 CALL (UP)"
-            elif rsi > 60: 
-                signal_type = "🔴 PUT (DOWN)"
+            
+            # CALL Strategy: Price rejection at bottom after sellers are exhausted
+            if is_exhausted_down and lower_wick > body_size * 1.5:
+                signal_type = "🟢 CALL (UP) - Trap Detected"
+            
+            # PUT Strategy: Price rejection at top after buyers are exhausted
+            elif is_exhausted_up and upper_wick > body_size * 1.5:
+                signal_type = "🔴 PUT (DOWN) - Trap Detected"
 
             if signal_type:
-                msg = f"""🎯 **10-MIN FAST SIGNAL**
+                msg = f"""🧠 **PSYCHOLOGY SIGNAL (TRAP)**
 ━━━━━━━━━━━━━━━━━━
 🏦 **Asset:** {symbol}
 ⚡ **Direction:** **{signal_type}**
 ⏳ **Duration:** 10 Minutes
-📊 **RSI:** {rsi:.1f}
+━━━━━━━━━━━━━━━━━━
+📊 **Logic:** Exhaustion & Rejection
 ⏰ **BD Time:** {now.strftime('%H:%M')}
 ━━━━━━━━━━━━━━━━━━"""
                 bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
-                # Start result thread immediately
                 threading.Thread(target=check_final_result, args=(symbol, signal_type, price)).start()
-                break # Send one high-quality signal per scan
+                break
             time.sleep(5)
         except: continue
 
@@ -86,9 +96,8 @@ def run_scheduler():
     while True:
         tz = pytz.timezone('Asia/Dhaka')
         now = datetime.now(tz)
-        # 10 minute interval scan
         if now.minute % 10 == 0 and now.second == 0:
-            get_signal_fast()
+            get_psychology_signal()
             time.sleep(60)
         time.sleep(1)
 
