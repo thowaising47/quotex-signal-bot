@@ -19,7 +19,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Psychology-Based Bot is Active!"
+    return "Strategic 10-Min Bot is Active!"
 
 PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD"]
 
@@ -30,13 +30,14 @@ def check_final_result(symbol, signal_type, entry_price):
         data = requests.get(url).json()
         exit_price = float(data['values'][0]['close'])
         win = (exit_price > entry_price) if "CALL" in signal_type else (exit_price < entry_price)
-        bot.send_message(CHAT_ID, f"📊 **PSYCHOLOGY RESULT: {symbol}**\nResult: {'✅ WIN' if win else '❌ LOSS'}\nEntry: `{entry_price:.5f}` | Exit: `{exit_price:.5f}`")
+        result_icon = "✅ WIN" if win else "❌ LOSS"
+        bot.send_message(CHAT_ID, f"📊 **10-MIN RESULT: {symbol}**\nResult: **{result_icon}**\nEntry: `{entry_price:.5f}` | Exit: `{exit_price:.5f}`")
     except: pass
 
-def get_psychology_signal():
+def get_strategic_signal():
     tz = pytz.timezone('Asia/Dhaka')
     now = datetime.now(tz)
-    print(f"🧠 [PSYCHOLOGY SCAN] {now.strftime('%H:%M:%S')}")
+    print(f"🔭 [STRATEGIC SCAN] {now.strftime('%H:%M:%S')}")
     
     for symbol in PAIRS:
         try:
@@ -48,47 +49,38 @@ def get_psychology_signal():
             df['close'] = pd.to_numeric(df['close'])
             df['high'] = pd.to_numeric(df['high'])
             df['low'] = pd.to_numeric(df['low'])
-            df['open'] = pd.to_numeric(df['open'])
             df = df.iloc[::-1].reset_index(drop=True)
 
+            # --- High Accuracy Indicators ---
+            rsi = ta.momentum.RSIIndicator(df['close'], window=14).rsi().iloc[-1]
+            stoch = ta.momentum.StochasticOscillator(df['high'], df['low'], df['close'], window=14, smooth_window=3)
+            stoch_k = stoch.stoch().iloc[-1]
+            
             price = df['close'].iloc[-1]
-            high = df['high'].iloc[-1]
-            low = df['low'].iloc[-1]
-            open_p = df['open'].iloc[-1]
-            
-            # 1. Exhaustion Logic: Porpor 3-4 ta green/red candle
-            last_3_candles = df.iloc[-3:]
-            is_exhausted_up = all(last_3_candles['close'] > last_3_candles['open'])
-            is_exhausted_down = all(last_3_candles['close'] < last_3_candles['open'])
+            ema200 = ta.trend.EMAIndicator(df['close'], window=200).ema_indicator().iloc[-1]
 
-            # 2. Rejection Logic: 40% wick rejection
-            upper_wick = (high - max(open_p, price))
-            lower_wick = (min(open_p, price) - low)
-            body_size = abs(price - open_p) + 0.000001
-            
             signal_type = ""
-            
-            # CALL Strategy: Price rejection at bottom after sellers are exhausted
-            if is_exhausted_down and lower_wick > body_size * 1.5:
-                signal_type = "🟢 CALL (UP) - Trap Detected"
-            
-            # PUT Strategy: Price rejection at top after buyers are exhausted
-            elif is_exhausted_up and upper_wick > body_size * 1.5:
-                signal_type = "🔴 PUT (DOWN) - Trap Detected"
+            # 🟢 CALL: Trend UP + RSI < 30 + Stoch < 20
+            if price > ema200 and rsi < 32 and stoch_k < 20:
+                signal_type = "🟢 CALL (UP) - Sureshot"
+            # 🔴 PUT: Trend DOWN + RSI > 70 + Stoch > 80
+            elif price < ema200 and rsi > 68 and stoch_k > 80:
+                signal_type = "🔴 PUT (DOWN) - Sureshot"
 
             if signal_type:
-                msg = f"""🧠 **PSYCHOLOGY SIGNAL (TRAP)**
+                msg = f"""🎯 **STRATEGIC 10-MIN SIGNAL**
 ━━━━━━━━━━━━━━━━━━
 🏦 **Asset:** {symbol}
 ⚡ **Direction:** **{signal_type}**
 ⏳ **Duration:** 10 Minutes
+🔥 **Confidence:** `Premium`
 ━━━━━━━━━━━━━━━━━━
-📊 **Logic:** Exhaustion & Rejection
+📊 **RSI:** {rsi:.1f} | **Stoch:** {stoch_k:.1f}
 ⏰ **BD Time:** {now.strftime('%H:%M')}
 ━━━━━━━━━━━━━━━━━━"""
                 bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
                 threading.Thread(target=check_final_result, args=(symbol, signal_type, price)).start()
-                break
+                break 
             time.sleep(5)
         except: continue
 
@@ -96,8 +88,9 @@ def run_scheduler():
     while True:
         tz = pytz.timezone('Asia/Dhaka')
         now = datetime.now(tz)
+        # Thik 10 minute por por scan hobe (05:20, 05:30...)
         if now.minute % 10 == 0 and now.second == 0:
-            get_psychology_signal()
+            get_strategic_signal()
             time.sleep(60)
         time.sleep(1)
 
