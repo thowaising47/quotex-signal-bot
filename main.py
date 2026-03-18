@@ -19,15 +19,14 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Optimized 10-Min Sniper is Online!"
+    return "Strict 10-Min Sniper is Online!"
 
-# Pair সংখ্যা বাড়ালাম যাতে সুযোগ বেশি থাকে
 PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "EUR/JPY", "GBP/JPY"]
 
-def get_optimized_signal():
+def get_strict_signal():
     tz = pytz.timezone('Asia/Dhaka')
     now = datetime.now(tz)
-    print(f"📡 [SCAN] Optimized Mode: {now.strftime('%H:%M:%S')}")
+    print(f"📡 [SCAN] Strict 10-Min Mode: {now.strftime('%H:%M:%S')}")
     
     for symbol in PAIRS:
         try:
@@ -37,52 +36,46 @@ def get_optimized_signal():
             
             df = pd.DataFrame(res['values'])
             df['close'] = pd.to_numeric(df['close'])
+            df['high'] = pd.to_numeric(df['high'])
+            df['low'] = pd.to_numeric(df['low'])
+            df['open'] = pd.to_numeric(df['open'])
             df = df.iloc[::-1].reset_index(drop=True)
 
-            # --- Technical Combo ---
-            rsi = ta.momentum.RSIIndicator(df['close'], window=14).rsi().iloc[-1]
-            # Bollinger Bands for Volatility
-            bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2)
-            bb_high = bb.bollinger_hband().iloc[-1]
-            bb_low = bb.bollinger_lband().iloc[-1]
-            
-            price = df['close'].iloc[-1]
+            # --- Technicals ---
             ema200 = ta.trend.EMAIndicator(df['close'], window=200).ema_indicator().iloc[-1]
+            bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2)
+            bb_high, bb_low = bb.bollinger_hband().iloc[-1], bb.bollinger_lband().iloc[-1]
+            
+            price, high, low, open_p = df['close'].iloc[-1], df['high'].iloc[-1], df['low'].iloc[-1], df['open'].iloc[-1]
+            
+            # Candle Rejection (Pin Bar Logic)
+            upper_wick = high - max(open_p, price)
+            lower_wick = min(open_p, price) - low
+            body = abs(price - open_p) + 0.000001
 
             signal_type = ""
+            # 🟢 CALL: Price below BB Low + Strong Lower Rejection + Trend is UP (Price > EMA200)
+            if price <= bb_low and lower_wick > body * 1.2 and price > ema200:
+                signal_type = "🟢 CALL (UP) - Rejection"
             
-            # 🟢 CALL Logic: Price hits Lower BB + RSI < 35 (Trend Support)
-            if price <= bb_low and rsi < 35:
-                signal_type = "🟢 CALL (UP) - Support Hit"
-            
-            # 🔴 PUT Logic: Price hits Upper BB + RSI > 65 (Trend Resistance)
-            elif price >= bb_high and rsi > 65:
-                signal_type = "🔴 PUT (DOWN) - Resistance Hit"
+            # 🔴 PUT: Price above BB High + Strong Upper Rejection + Trend is DOWN (Price < EMA200)
+            elif price >= bb_high and upper_wick > body * 1.2 and price < ema200:
+                signal_type = "🔴 PUT (DOWN) - Rejection"
 
             if signal_type:
-                msg = f"""💎 **10-MIN OPTIMIZED SIGNAL**
-━━━━━━━━━━━━━━━━━━
-🏦 **Asset:** {symbol}
-⚡ **Direction:** **{signal_type}**
-⏳ **Duration:** 10 Minutes
-📊 **RSI:** {rsi:.1f}
-━━━━━━━━━━━━━━━━━━
-⏰ **BD Time:** {now.strftime('%H:%M')}
-━━━━━━━━━━━━━━━━━━"""
+                msg = f"💎 **10-MIN SNIPER SIGNAL**\n━━━━━━━━━━━━━━\n🏦 Asset: {symbol}\n⚡ Direction: **{signal_type}**\n⏳ Time: 10 MIN\n⏰ BD Time: {now.strftime('%H:%M')}\n━━━━━━━━━━━━━━"
                 bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
-                # Result logic function call ignored for brevity but same as before
                 break 
             time.sleep(3)
-        except Exception as e:
-            print(f"Error on {symbol}: {e}")
+        except: continue
 
 def run_scheduler():
     while True:
         tz = pytz.timezone('Asia/Dhaka')
         now = datetime.now(tz)
-        # ৫ মিনিট পর পর স্ক্যান করবে যাতে সিগন্যাল ঘন ঘন আসে
-        if now.minute % 5 == 0 and now.second == 0:
-            get_optimized_signal()
+        # THIK 10 MINUTE POR POR SCAN (12:20, 12:30...)
+        if now.minute % 10 == 0 and now.second == 0:
+            get_strict_signal()
             time.sleep(60)
         time.sleep(1)
 
