@@ -19,14 +19,14 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Strict 10-Min Sniper is Online!"
+    return "10-Min High Frequency Bot is Online!"
 
 PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "EUR/JPY", "GBP/JPY"]
 
-def get_strict_signal():
+def get_signal_now():
     tz = pytz.timezone('Asia/Dhaka')
     now = datetime.now(tz)
-    print(f"📡 [SCAN] Strict 10-Min Mode: {now.strftime('%H:%M:%S')}")
+    print(f"📡 [SCAN] 10-Min Scan Started: {now.strftime('%H:%M:%S')}")
     
     for symbol in PAIRS:
         try:
@@ -36,46 +36,36 @@ def get_strict_signal():
             
             df = pd.DataFrame(res['values'])
             df['close'] = pd.to_numeric(df['close'])
-            df['high'] = pd.to_numeric(df['high'])
-            df['low'] = pd.to_numeric(df['low'])
-            df['open'] = pd.to_numeric(df['open'])
             df = df.iloc[::-1].reset_index(drop=True)
 
-            # --- Technicals ---
-            ema200 = ta.trend.EMAIndicator(df['close'], window=200).ema_indicator().iloc[-1]
-            bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=2)
-            bb_high, bb_low = bb.bollinger_hband().iloc[-1], bb.bollinger_lband().iloc[-1]
-            
-            price, high, low, open_p = df['close'].iloc[-1], df['high'].iloc[-1], df['low'].iloc[-1], df['open'].iloc[-1]
-            
-            # Candle Rejection (Pin Bar Logic)
-            upper_wick = high - max(open_p, price)
-            lower_wick = min(open_p, price) - low
-            body = abs(price - open_p) + 0.000001
+            # --- Faster Indicators for More Signals ---
+            rsi = ta.momentum.RSIIndicator(df['close'], window=14).rsi().iloc[-1]
+            bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=1.9)
+            bb_h, bb_l = bb.bollinger_hband().iloc[-1], bb.bollinger_lband().iloc[-1]
+            price = df['close'].iloc[-1]
 
             signal_type = ""
-            # 🟢 CALL: Price below BB Low + Strong Lower Rejection + Trend is UP (Price > EMA200)
-            if price <= bb_low and lower_wick > body * 1.2 and price > ema200:
-                signal_type = "🟢 CALL (UP) - Rejection"
-            
-            # 🔴 PUT: Price above BB High + Strong Upper Rejection + Trend is DOWN (Price < EMA200)
-            elif price >= bb_high and upper_wick > body * 1.2 and price < ema200:
-                signal_type = "🔴 PUT (DOWN) - Rejection"
+            # Relaxed Logic: Only RSI + BB (No heavy EMA filter)
+            if price <= bb_l and rsi < 40:
+                signal_type = "🟢 CALL (UP)"
+            elif price >= bb_h and rsi > 60:
+                signal_type = "🔴 PUT (DOWN)"
 
             if signal_type:
-                msg = f"💎 **10-MIN SNIPER SIGNAL**\n━━━━━━━━━━━━━━\n🏦 Asset: {symbol}\n⚡ Direction: **{signal_type}**\n⏳ Time: 10 MIN\n⏰ BD Time: {now.strftime('%H:%M')}\n━━━━━━━━━━━━━━"
+                msg = f"🎯 **10-MIN SIGNAL**\n━━━━━━━━━━━━━━\n🏦 Asset: {symbol}\n⚡ Direction: **{signal_type}**\n📊 RSI: {rsi:.1f}\n⏰ BD Time: {now.strftime('%H:%M')}\n━━━━━━━━━━━━━━"
                 bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
+                # One signal per scan cycle
                 break 
-            time.sleep(3)
+            time.sleep(2)
         except: continue
 
 def run_scheduler():
     while True:
         tz = pytz.timezone('Asia/Dhaka')
         now = datetime.now(tz)
-        # THIK 10 MINUTE POR POR SCAN (12:20, 12:30...)
+        # EXACT 10 MINUTE SCAN (05:40, 05:50, 06:00...)
         if now.minute % 10 == 0 and now.second == 0:
-            get_strict_signal()
+            get_signal_now()
             time.sleep(60)
         time.sleep(1)
 
