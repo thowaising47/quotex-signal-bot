@@ -19,68 +19,60 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "1-Min Sniper (Entry @ 00s) is Active!"
+    return "Momentum 1-Min Sniper is Online!"
 
 PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "EUR/JPY"]
 
-def check_1min_result(symbol, signal_type, entry_price):
-    # Wait for the 1-min candle to close (60s + 5s buffer)
-    time.sleep(65)
-    try:
-        url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=1min&outputsize=2&apikey={TWELVE_DATA_API_KEY}"
-        data = requests.get(url).json()
-        exit_price = float(data['values'][0]['close'])
-        
-        win = (exit_price > entry_price) if "CALL" in signal_type else (exit_price < entry_price)
-        result_icon = "💰 WIN" if win else "❌ LOSS"
-        
-        bot.send_message(CHAT_ID, f"📊 **RESULT: {symbol}**\nResult: **{result_icon}**\nEntry: `{entry_price:.5f}` | Exit: `{exit_price:.5f}`")
-    except: pass
-
-def get_fast_signal():
+def get_recovery_signal():
     tz = pytz.timezone('Asia/Dhaka')
     now = datetime.now(tz)
-    print(f"⚡ [SCAN START] {now.strftime('%H:%M:%S')}")
+    print(f"🚀 [SCAN] Recovery Mode: {now.strftime('%H:%M:%S')}")
     
     for symbol in PAIRS:
         try:
-            url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=1min&outputsize=15&apikey={TWELVE_DATA_API_KEY}"
-            res = requests.get(url, timeout=5).json()
+            url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=1min&outputsize=20&apikey={TWELVE_DATA_API_KEY}"
+            res = requests.get(url, timeout=7).json()
             if 'values' not in res: continue
             
             df = pd.DataFrame(res['values'])
             df['close'] = pd.to_numeric(df['close'])
+            df['open'] = pd.to_numeric(df['open'])
             df = df.iloc[::-1].reset_index(drop=True)
 
-            # Scalping Indicators
+            # --- Pro Indicators ---
+            ema20 = ta.trend.EMAIndicator(df['close'], window=20).ema_indicator().iloc[-1]
             rsi = ta.momentum.RSIIndicator(df['close'], window=7).rsi().iloc[-1]
+            
+            # Momentum: Last 2 candles direction
+            c1_green = df['close'].iloc[-1] > df['open'].iloc[-1]
+            c2_green = df['close'].iloc[-2] > df['open'].iloc[-2]
+            
             price = df['close'].iloc[-1]
-
             signal_type = ""
-            if rsi < 25: signal_type = "🟢 CALL (1-MIN)"
-            elif rsi > 75: signal_type = "🔴 PUT (1-MIN)"
+
+            # 🟢 CALL: Price > EMA20 (Uptrend) + RSI < 35 + 2 Red Candles (Pullback)
+            if price > ema20 and rsi < 35 and not c1_green and not c2_green:
+                signal_type = "🟢 CALL (1-MIN)"
+            
+            # 🔴 PUT: Price < EMA20 (Downtrend) + RSI > 65 + 2 Green Candles (Pullback)
+            elif price < ema20 and rsi > 65 and c1_green and c2_green:
+                signal_type = "🔴 PUT (1-MIN)"
 
             if signal_type:
-                msg = f"🚀 **ENTRY READY!**\n━━━━━━━━━━━━━━\n🏦 Asset: {symbol}\n⚡ Direction: **{signal_type}**\n⏳ Trade at: **:00 Seconds**\n⏰ BD Time: {now.strftime('%H:%M:%S')}\n━━━━━━━━━━━━━━"
+                msg = f"🔥 **RECOVERY SIGNAL**\n━━━━━━━━━━━━━━\n🏦 Asset: {symbol}\n⚡ Direction: **{signal_type}**\n⏳ Trade at: **:00 Seconds**\n⏰ BD Time: {now.strftime('%H:%M:%S')}\n━━━━━━━━━━━━━━"
                 bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
-                threading.Thread(target=check_1min_result, args=(symbol, signal_type, price)).start()
-                break
+                break 
+            time.sleep(1)
         except: continue
 
 def run_scheduler():
     while True:
         tz = pytz.timezone('Asia/Dhaka')
         now = datetime.now(tz)
-        
-        # Thik 50th second-e trigger hobe jate 00 second-e entry dewa jay
-        # 2 minute por por: jemon 08:28:50, 08:30:50, 08:32:50
-        if now.minute % 2 == 0 and now.second == 50:
-            get_fast_signal()
-            time.sleep(10) # Avoid double trigger
-        elif (now.minute + 1) % 2 == 0 and now.second == 50:
-            get_fast_signal()
+        # Thik 50th second-e trigger (08:38:50, 08:40:50...)
+        if now.second == 50:
+            get_recovery_signal()
             time.sleep(10)
-            
         time.sleep(0.5)
 
 if __name__ == "__main__":
