@@ -19,55 +19,69 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "10-Min High Frequency Bot is Online!"
+    return "1-Min Sniper (Entry @ 00s) is Active!"
 
-PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "EUR/JPY", "GBP/JPY"]
+PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "AUD/USD", "USD/CAD", "EUR/JPY"]
 
-def get_signal_now():
+def check_1min_result(symbol, signal_type, entry_price):
+    # Wait for the 1-min candle to close (60s + 5s buffer)
+    time.sleep(65)
+    try:
+        url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=1min&outputsize=2&apikey={TWELVE_DATA_API_KEY}"
+        data = requests.get(url).json()
+        exit_price = float(data['values'][0]['close'])
+        
+        win = (exit_price > entry_price) if "CALL" in signal_type else (exit_price < entry_price)
+        result_icon = "💰 WIN" if win else "❌ LOSS"
+        
+        bot.send_message(CHAT_ID, f"📊 **RESULT: {symbol}**\nResult: **{result_icon}**\nEntry: `{entry_price:.5f}` | Exit: `{exit_price:.5f}`")
+    except: pass
+
+def get_fast_signal():
     tz = pytz.timezone('Asia/Dhaka')
     now = datetime.now(tz)
-    print(f"📡 [SCAN] 10-Min Scan Started: {now.strftime('%H:%M:%S')}")
+    print(f"⚡ [SCAN START] {now.strftime('%H:%M:%S')}")
     
     for symbol in PAIRS:
         try:
-            url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=5min&outputsize=50&apikey={TWELVE_DATA_API_KEY}"
-            res = requests.get(url, timeout=12).json()
+            url = f"https://api.twelvedata.com/time_series?symbol={symbol}&interval=1min&outputsize=15&apikey={TWELVE_DATA_API_KEY}"
+            res = requests.get(url, timeout=5).json()
             if 'values' not in res: continue
             
             df = pd.DataFrame(res['values'])
             df['close'] = pd.to_numeric(df['close'])
             df = df.iloc[::-1].reset_index(drop=True)
 
-            # --- Faster Indicators for More Signals ---
-            rsi = ta.momentum.RSIIndicator(df['close'], window=14).rsi().iloc[-1]
-            bb = ta.volatility.BollingerBands(df['close'], window=20, window_dev=1.9)
-            bb_h, bb_l = bb.bollinger_hband().iloc[-1], bb.bollinger_lband().iloc[-1]
+            # Scalping Indicators
+            rsi = ta.momentum.RSIIndicator(df['close'], window=7).rsi().iloc[-1]
             price = df['close'].iloc[-1]
 
             signal_type = ""
-            # Relaxed Logic: Only RSI + BB (No heavy EMA filter)
-            if price <= bb_l and rsi < 40:
-                signal_type = "🟢 CALL (UP)"
-            elif price >= bb_h and rsi > 60:
-                signal_type = "🔴 PUT (DOWN)"
+            if rsi < 25: signal_type = "🟢 CALL (1-MIN)"
+            elif rsi > 75: signal_type = "🔴 PUT (1-MIN)"
 
             if signal_type:
-                msg = f"🎯 **10-MIN SIGNAL**\n━━━━━━━━━━━━━━\n🏦 Asset: {symbol}\n⚡ Direction: **{signal_type}**\n📊 RSI: {rsi:.1f}\n⏰ BD Time: {now.strftime('%H:%M')}\n━━━━━━━━━━━━━━"
+                msg = f"🚀 **ENTRY READY!**\n━━━━━━━━━━━━━━\n🏦 Asset: {symbol}\n⚡ Direction: **{signal_type}**\n⏳ Trade at: **:00 Seconds**\n⏰ BD Time: {now.strftime('%H:%M:%S')}\n━━━━━━━━━━━━━━"
                 bot.send_message(CHAT_ID, msg, parse_mode="Markdown")
-                # One signal per scan cycle
-                break 
-            time.sleep(2)
+                threading.Thread(target=check_1min_result, args=(symbol, signal_type, price)).start()
+                break
         except: continue
 
 def run_scheduler():
     while True:
         tz = pytz.timezone('Asia/Dhaka')
         now = datetime.now(tz)
-        # EXACT 10 MINUTE SCAN (05:40, 05:50, 06:00...)
-        if now.minute % 10 == 0 and now.second == 0:
-            get_signal_now()
-            time.sleep(60)
-        time.sleep(1)
+        
+        # Thik 50th second-e trigger hobe jate 00 second-e entry dewa jay
+        # 2 minute por por: jemon 08:28:50, 08:30:50, 08:32:50
+        if now.minute % 2 == 0 and now.second == 50:
+            get_fast_signal()
+            time.sleep(10) # Avoid double trigger
+        elif (now.minute + 1) % 2 == 0 and now.second == 50:
+            get_fast_signal()
+            time.sleep(10)
+            
+        time.sleep(0.5)
 
 if __name__ == "__main__":
     threading.Thread(target=run_scheduler, daemon=True).start()
